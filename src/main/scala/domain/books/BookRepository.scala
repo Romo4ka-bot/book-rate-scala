@@ -10,4 +10,6 @@ trait BookRepository[F[_]] {
   def get(id: Long): F[Option[Book]]
 
   def delete(id: Long): F[Option[Book]]
+
+  def findAll(pageSize: Int, offset: Int): F[List[Book]]
 }

@@ -56,8 +56,7 @@ class DoobieUserRepositoryInterpreter[F[_]: Bracket[*[_], Throwable]](val xa: Tr
   import UserSQL._
 
   def create(user: User): F[User] = {
-    val qq = insert(user).withUniqueGeneratedKeys[Long]("id").map(id => user.copy(id = id.some))
-    qq.transact(xa)
+    insert(user).withUniqueGeneratedKeys[Long]("id").map(id => user.copy(id = id.some)).transact(xa)
   }
 
   def update(user: User): OptionT[F, User] =

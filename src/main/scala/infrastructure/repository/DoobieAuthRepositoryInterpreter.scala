@@ -8,6 +8,7 @@ import cats.effect.Bracket
 import cats.syntax.all._
 import doobie._
 import doobie.implicits._
+import doobie.implicits.legacy.instant._
 import tsec.authentication.{AugmentedJWT, BackingStore}
 import tsec.common.SecureRandomId
 import tsec.jws.JWSSerializer
@@ -17,6 +18,7 @@ import tsec.mac.jca.{MacErrorM, MacSigningKey}
 private object AuthSQL {
   implicit val secureRandomIdPut: Put[SecureRandomId] =
     Put[String].contramap((_: Id[SecureRandomId]).widen)
+
   def insert[A](jwt: AugmentedJWT[A, Long])(implicit hs: JWSSerializer[JWSMacHeader[A]]): Update0 =
     sql"""INSERT INTO JWT (ID, JWT, IDENTITY, EXPIRY, LAST_TOUCHED)
           VALUES (${jwt.id}, ${jwt.jwt.toEncodedString}, ${jwt.identity}, ${jwt.expiry}, ${jwt.lastTouched})
@@ -35,13 +37,13 @@ private object AuthSQL {
       .query[(String, Long, Instant, Option[Instant])]
 }
 
-class DoobieAuthRepositoryInterpreter[F[_] : Bracket[*[_], Throwable], A](
-                                                                           val key: MacSigningKey[A],
-                                                                           val xa: Transactor[F],
-                                                                         )(implicit
-                                                                           hs: JWSSerializer[JWSMacHeader[A]],
-                                                                           s: JWSMacCV[MacErrorM, A],
-                                                                         ) extends BackingStore[F, SecureRandomId, AugmentedJWT[A, Long]] {
+class DoobieAuthRepositoryInterpreter[F[_]: Bracket[*[_], Throwable], A](
+    val key: MacSigningKey[A],
+    val xa: Transactor[F],
+)(implicit
+    hs: JWSSerializer[JWSMacHeader[A]],
+    s: JWSMacCV[MacErrorM, A],
+) extends BackingStore[F, SecureRandomId, AugmentedJWT[A, Long]] {
   override def put(jwt: AugmentedJWT[A, Long]): F[AugmentedJWT[A, Long]] =
     AuthSQL.insert(jwt).run.transact(xa).as(jwt)
 
@@ -62,9 +64,9 @@ class DoobieAuthRepositoryInterpreter[F[_] : Bracket[*[_], Throwable], A](
 }
 
 object DoobieAuthRepositoryInterpreter {
-  def apply[F[_] : Bracket[*[_], Throwable], A](key: MacSigningKey[A], xa: Transactor[F])(implicit
-                                                                                          hs: JWSSerializer[JWSMacHeader[A]],
-                                                                                          s: JWSMacCV[MacErrorM, A],
+  def apply[F[_]: Bracket[*[_], Throwable], A](key: MacSigningKey[A], xa: Transactor[F])(implicit
+      hs: JWSSerializer[JWSMacHeader[A]],
+      s: JWSMacCV[MacErrorM, A],
   ): DoobieAuthRepositoryInterpreter[F, A] =
     new DoobieAuthRepositoryInterpreter(key, xa)
 }
