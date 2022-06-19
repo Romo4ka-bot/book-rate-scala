@@ -7,23 +7,24 @@ import doobie.implicits._
 import cats.effect.Bracket
 import domain.books.{Book, BookRepository}
 import doobie.{Transactor, Update0}
+import infrastructure.repository.SQLPagination.paginate
 
 private object BookSQL {
   def insert(book: Book): Update0 =
     sql"""
-    INSERT INTO BOOK (TITLE, AUTHOR, RATE, PUSHED_BY)
-    VALUES (${book.title}, ${book.author}, ${book.rate}, ${book.pushedBy})
+    INSERT INTO BOOK (TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY)
+    VALUES (${book.title}, ${book.description}, ${book.author}, ${book.rate}, ${book.pushedBy})
   """.update
 
   def update(book: Book, id: Long): Update0 = sql"""
     UPDATE BOOK
-    SET TITLE = ${book.title}, AUTHOR = ${book.author}, RATE = ${book.rate}, PUSHED_BY = ${book.pushedBy}
-    WHERE id = $id
+    SET TITLE = ${book.title}, DESCRIPTION =  ${book.description}, AUTHOR = ${book.author}
+    WHERE ID = $id
   """.update
 
   def select(id: Long): Query0[Book] =
     sql"""
-    SELECT TITLE, AUTHOR, RATE, PUSHED_BY, ID
+    SELECT TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY, ID
     FROM BOOK
     WHERE ID = $id
   """.query
@@ -34,17 +35,23 @@ private object BookSQL {
   """.update
 
   def selectByTitleAndAuthor(title: String, author: String): Query0[Book] = sql"""
-    SELECT TITLE, AUTHOR, RATE, PUSHED_BY, ID
+    SELECT TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY, ID
     FROM BOOK
     WHERE TITLE = $title AND AUTHOR = $author
   """.query[Book]
+
+  def selectAll: Query0[Book] = sql"""
+    SELECT TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY, ID
+    FROM BOOK
+    ORDER BY TITLE
+  """.query
 }
 
 class DoobieBookRepositoryInterpreter[F[_]: Bracket[*[_], Throwable]](val xa: Transactor[F])
   extends BookRepository[F] {
   import BookSQL._
 
-  override def create(book: Book): F[Book] = insert(book).withUniqueGeneratedKeys[Long]("ID").map(id => book.copy(id = id.some)).transact(xa)
+  override def create(book: Book): F[Book] = insert(book).withUniqueGeneratedKeys[Long]("id").map(id => book.copy(id = id.some)).transact(xa)
 
   override def update(book: Book): F[Option[Book]] = OptionT
     .fromOption[ConnectionIO](book.id)
@@ -57,9 +64,11 @@ class DoobieBookRepositoryInterpreter[F[_]: Bracket[*[_], Throwable]](val xa: Tr
   override def delete(id: Long): F[Option[Book]] =
     OptionT(select(id).option).semiflatMap(book => BookSQL.delete(id).run.as(book)).value.transact(xa)
 
-  override def findByTitleAndAuthor(title: String, author: String): F[Set[Book]] = {
+  override def findByTitleAndAuthor(title: String, author: String): F[Set[Book]] =
     selectByTitleAndAuthor(title, author).to[List].transact(xa).map(_.toSet)
-  }
+
+  def findAll(pageSize: Int, offset: Int): F[List[Book]] =
+    paginate(pageSize, offset)(selectAll).to[List].transact(xa)
 }
 
 object DoobieBookRepositoryInterpreter {

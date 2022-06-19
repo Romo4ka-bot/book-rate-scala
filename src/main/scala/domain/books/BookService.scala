@@ -3,7 +3,7 @@ package domain.books
 import cats.data.EitherT
 import cats.implicits.toFunctorOps
 import cats.{Functor, Monad}
-import domain.BookAlreadyExistsError
+import domain.{BookAlreadyExistsError, BookNotFoundError}
 
 class BookService[F[_]](
                          repository: BookRepository[F],
@@ -18,6 +18,18 @@ class BookService[F[_]](
       saved <- EitherT.liftF(repository.create(book))
     } yield saved
   }
+
+  def update(book: Book)(implicit M: Monad[F]): EitherT[F, BookNotFoundError.type, Book] =
+    for {
+      _ <- validation.exists(book.id)
+      saved <- EitherT.fromOptionF(repository.update(book), BookNotFoundError)
+    } yield saved
+
+  def get(id: Long)(implicit F: Functor[F]): EitherT[F, BookNotFoundError.type, Book] =
+    EitherT.fromOptionF(repository.get(id), BookNotFoundError)
+
+  def getListOfBooks(pageSize: Int, offset: Int): F[List[Book]] =
+    repository.findAll(pageSize, offset)
 }
 
 object BookService {
