@@ -57,9 +57,9 @@ class BookEndpoints[F[_] : Sync, Auth: JWTMacAlgo] extends Http4sDsl[F] {
 
   private def getBookEndpoint(bookService: BookService[F]): HttpRoutes[F] = HttpRoutes.of[F] {
     case GET -> Root / LongVar(id) =>
-      bookService.get(id).value.flatMap {
-        case Right(found) => Ok(found.asJson)
-        case Left(BookNotFoundError) => NotFound("The book was not found")
+      bookService.get(id).flatMap {
+        case None => NotFound("The book was not found")
+        case Some(book) => Ok(book.asJson)
       }
   }
 
