@@ -1,6 +1,8 @@
 package domain.books
 
 trait BookRepository[F[_]] {
+  def updateRateById(rate: Float, id: Option[Long]): F[Option[Long]]
+
   def findByTitleAndAuthor(title: String, author: String): F[Set[Book]]
 
   def create(book: Book): F[Book]

@@ -16,12 +16,16 @@ import tsec.jwt.algorithms.JWTMacAlgo
 import tsec.passwordhashers.{PasswordHash, PasswordHasher}
 import tsec.authentication._
 
-class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
+class UserEndpoints[F[_] : Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
+
   import Pagination._
 
   /* Jsonization of our User type */
 
   implicit val userDecoder: EntityDecoder[F, User] = jsonOf
+
+  implicit val userDtoDecoder: EntityDecoder[F, UserDto] = jsonOf
+
   implicit val loginReqDecoder: EntityDecoder[F, LoginRequest] = jsonOf
 
   implicit val signupReqDecoder: EntityDecoder[F, SignupRequest] = jsonOf
@@ -31,7 +35,7 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
                              cryptService: PasswordHasher[F, A],
                              auth: Authenticator[F, Long, User, AugmentedJWT[Auth, Long]],
                            ): HttpRoutes[F] =
-    HttpRoutes.of[F] { case req @ POST -> Root / "login" =>
+    HttpRoutes.of[F] { case req@POST -> Root / "login" =>
       val action = for {
         login <- EitherT.liftF(req.as[LoginRequest])
         name = login.userName
@@ -49,7 +53,7 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
       } yield (user, token)
 
       action.value.flatMap {
-        case Right((user, token)) => Ok(user.asJson).map(auth.embed(_, token))
+        case Right((user, token)) => Ok(User.mapToUserDto(user).asJson).map(auth.embed(_, token))
         case Left(UserAuthenticationFailedError(name)) =>
           BadRequest(s"Authentication failed for user $name")
       }
@@ -59,7 +63,7 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
                               userService: UserService[F],
                               crypt: PasswordHasher[F, A],
                             ): HttpRoutes[F] =
-    HttpRoutes.of[F] { case req @ POST -> Root =>
+    HttpRoutes.of[F] { case req@POST -> Root =>
       val action = for {
         signup <- req.as[SignupRequest]
         hash <- crypt.hashpw(signup.password)
@@ -68,14 +72,14 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
       } yield result
 
       action.flatMap {
-        case Right(saved) => Ok(saved.asJson)
+        case Right(saved) => Ok(User.mapToUserDto(saved).asJson)
         case Left(UserAlreadyExistsError(existing)) =>
           Conflict(s"The user with user name ${existing.userName} already exists")
       }
     }
 
   private def updateEndpoint(userService: UserService[F]): AuthEndpoint[F, Auth] = {
-    case req @ PUT -> Root / name asAuthed _ =>
+    case req@PUT -> Root / name asAuthed _ =>
       val action = for {
         user <- req.request.as[User]
         updated = user.copy(userName = name)
@@ -83,7 +87,7 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
       } yield result
 
       action.flatMap {
-        case Right(saved) => Ok(saved.asJson)
+        case Right(saved) => Ok(User.mapToUserDto(saved).asJson)
         case Left(UserNotFoundError) => NotFound("User not found")
       }
   }
@@ -94,14 +98,14 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
     ) asAuthed _ =>
       for {
         retrieved <- userService.list(pageSize.getOrElse(10), offset.getOrElse(0))
-        resp <- Ok(retrieved.asJson)
+        resp <- Ok(retrieved.map(el => User.mapToUserDto(el)).asJson)
       } yield resp
   }
 
   private def searchByNameEndpoint(userService: UserService[F]): AuthEndpoint[F, Auth] = {
     case GET -> Root / userName asAuthed _ =>
       userService.getUserByName(userName).value.flatMap {
-        case Right(found) => Ok(found.asJson)
+        case Right(found) => Ok(User.mapToUserDto(found).asJson)
         case Left(UserNotFoundError) => NotFound("The user was not found")
       }
   }
@@ -136,11 +140,11 @@ class UserEndpoints[F[_]: Sync, A, Auth: JWTMacAlgo] extends Http4sDsl[F] {
 }
 
 object UserEndpoints {
-  def endpoints[F[_]: Sync, A, Auth: JWTMacAlgo](
-                                                  userService: UserService[F],
-                                                  cryptService: PasswordHasher[F, A],
-                                                  auth: SecuredRequestHandler[F, Long, User, AugmentedJWT[Auth, Long]],
-                                                ): HttpRoutes[F] =
+  def endpoints[F[_] : Sync, A, Auth: JWTMacAlgo](
+                                                   userService: UserService[F],
+                                                   cryptService: PasswordHasher[F, A],
+                                                   auth: SecuredRequestHandler[F, Long, User, AugmentedJWT[Auth, Long]],
+                                                 ): HttpRoutes[F] =
     new UserEndpoints[F, A, Auth].endpoints(userService, cryptService, auth)
 }
 

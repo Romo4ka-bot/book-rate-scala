@@ -33,7 +33,7 @@ object Server extends IOApp {
       reviewValidation = ReviewValidationInterpreter[F](reviewRepo)
       userService = UserService[F](userRepo, userValidation)
       bookService = BookService[F](bookRepo, bookValidation)
-      reviewService = ReviewService[F](reviewRepo, reviewValidation)
+      reviewService = ReviewService[F](reviewRepo, reviewValidation, bookService)
       authenticator = Auth.jwtAuthenticator[F, HMACSHA256](key, authRepo, userRepo)
       routeAuth = SecuredRequestHandler(authenticator)
       httpApp = Router(

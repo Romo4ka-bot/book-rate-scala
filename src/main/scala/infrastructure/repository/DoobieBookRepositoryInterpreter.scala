@@ -16,7 +16,8 @@ private object BookSQL {
     VALUES (${book.title}, ${book.description}, ${book.author}, ${book.rate}, ${book.pushedBy})
   """.update
 
-  def update(book: Book, id: Long): Update0 = sql"""
+  def update(book: Book, id: Long): Update0 =
+    sql"""
     UPDATE BOOK
     SET TITLE = ${book.title}, DESCRIPTION =  ${book.description}, AUTHOR = ${book.author}
     WHERE ID = $id
@@ -34,21 +35,31 @@ private object BookSQL {
     DELETE FROM BOOK WHERE ID = $id
   """.update
 
-  def selectByTitleAndAuthor(title: String, author: String): Query0[Book] = sql"""
+  def selectByTitleAndAuthor(title: String, author: String): Query0[Book] =
+    sql"""
     SELECT TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY, ID
     FROM BOOK
     WHERE TITLE = $title AND AUTHOR = $author
-  """.query[Book]
+  """.query
 
-  def selectAll: Query0[Book] = sql"""
+  def selectAll: Query0[Book] =
+    sql"""
     SELECT TITLE, DESCRIPTION, AUTHOR, RATE, PUSHED_BY, ID
     FROM BOOK
     ORDER BY TITLE
   """.query
+
+  def updateRateById(rate: Float, id: Option[Long]): Update0 =
+    sql"""
+    UPDATE BOOK
+    SET RATE = $rate
+    WHERE ID = $id;
+       """.update
 }
 
-class DoobieBookRepositoryInterpreter[F[_]: Bracket[*[_], Throwable]](val xa: Transactor[F])
+class DoobieBookRepositoryInterpreter[F[_] : Bracket[*[_], Throwable]](val xa: Transactor[F])
   extends BookRepository[F] {
+
   import BookSQL._
 
   override def create(book: Book): F[Book] = insert(book).withUniqueGeneratedKeys[Long]("id").map(id => book.copy(id = id.some)).transact(xa)
@@ -69,9 +80,15 @@ class DoobieBookRepositoryInterpreter[F[_]: Bracket[*[_], Throwable]](val xa: Tr
 
   def findAll(pageSize: Int, offset: Int): F[List[Book]] =
     paginate(pageSize, offset)(selectAll).to[List].transact(xa)
+
+  override def updateRateById(rate: Float, id: Option[Long]): F[Option[Long]] = OptionT
+    .fromOption[ConnectionIO](id)
+    .semiflatMap(currId => BookSQL.updateRateById(rate, id).run.as(currId))
+    .value
+    .transact(xa)
 }
 
 object DoobieBookRepositoryInterpreter {
-  def apply[F[_]: Bracket[*[_], Throwable]](xa: Transactor[F]): DoobieBookRepositoryInterpreter[F] =
+  def apply[F[_] : Bracket[*[_], Throwable]](xa: Transactor[F]): DoobieBookRepositoryInterpreter[F] =
     new DoobieBookRepositoryInterpreter(xa)
 }

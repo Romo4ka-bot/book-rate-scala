@@ -4,6 +4,20 @@ volumes:
   pgdata:
 
 services:
+  app:
+    image:
+      book-rate-app-image
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: app
+    networks:
+      - default
+    ports:
+      - 8080:8080
+    depends_on:
+      - db
+
   db:
     container_name: db
     image: postgres:13
